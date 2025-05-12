@@ -39,14 +39,24 @@ HTML = '''
 
 def get_access_token(combined_cookie):
     try:
-        # Extract c_user and xs from combined cookie string (assumes first part is c_user and second part is xs)
-        if len(combined_cookie) < 100:  # Simple validation for expected length
-            return "[-] Invalid cookie format or expired cookies."
+        # Split the combined cookie string into individual cookies
+        cookies_dict = {}
+        cookies = combined_cookie.split(';')
+        
+        for cookie in cookies:
+            # Remove leading/trailing spaces and split cookie name and value
+            if '=' in cookie:
+                name, value = cookie.strip().split('=', 1)
+                cookies_dict[name] = value
+        
+        # Extract c_user and xs from cookies_dict
+        c_user = cookies_dict.get('c_user', None)
+        xs = cookies_dict.get('xs', None)
 
-        # Normally split logic will work, but here we assume c_user and xs are correctly formatted
-        c_user = combined_cookie[:15]  # Extract first 15 characters for c_user
-        xs = combined_cookie[15:]  # Remaining part is xs
-
+        # Validate if we have both cookies
+        if not c_user or not xs:
+            return "[-] Missing c_user or xs in cookies."
+        
         # Set cookies for request
         cookie_data = {
             'c_user': c_user,
