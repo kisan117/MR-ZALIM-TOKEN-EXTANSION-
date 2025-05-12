@@ -23,10 +23,8 @@ HTML = '''
 <body>
     <h2>Facebook Real Token Extractor</h2>
     <form method="POST">
-        <label>c_user:</label>
-        <input type="text" name="c_user" required><br>
-        <label>xs:</label>
-        <input type="text" name="xs" required><br>
+        <label>Enter combined c_user and xs cookies:</label>
+        <input type="text" name="cookies" required><br>
         <input type="submit" value="Get Token">
     </form>
     {% if result %}
@@ -39,21 +37,31 @@ HTML = '''
 </html>
 '''
 
-def get_access_token(c_user, xs):
-    cookies = {
-        'c_user': c_user,
-        'xs': xs
-    }
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    }
-
+def get_access_token(combined_cookie):
     try:
+        # Extract c_user and xs from combined cookie string (assumes first part is c_user and second part is xs)
+        if len(combined_cookie) < 100:  # Simple validation for expected length
+            return "[-] Invalid cookie format or expired cookies."
+
+        # Normally split logic will work, but here we assume c_user and xs are correctly formatted
+        c_user = combined_cookie[:15]  # Extract first 15 characters for c_user
+        xs = combined_cookie[15:]  # Remaining part is xs
+
+        # Set cookies for request
+        cookie_data = {
+            'c_user': c_user,
+            'xs': xs
+        }
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        }
+
+        # Make request to Facebook's business page to check validity of cookies
         response = requests.get(
             "https://business.facebook.com/business_locations",
             headers=headers,
-            cookies=cookies
+            cookies=cookie_data
         )
 
         if 'EAAG' in response.text:
@@ -68,9 +76,8 @@ def get_access_token(c_user, xs):
 def index():
     result = None
     if request.method == 'POST':
-        c_user = request.form['c_user']
-        xs = request.form['xs']
-        result = get_access_token(c_user, xs)
+        combined_cookie = request.form['cookies']
+        result = get_access_token(combined_cookie)
     return render_template_string(HTML, result=result)
 
 if __name__ == '__main__':
