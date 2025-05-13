@@ -1,6 +1,5 @@
 from flask import Flask, request, render_template_string
 import requests
-import os
 
 app = Flask(__name__)
 
@@ -57,6 +56,10 @@ def get_access_token(combined_cookie):
         if not c_user or not xs:
             return "[-] Missing c_user or xs in cookies."
         
+        # Get first 15 characters from c_user and xs
+        c_user = c_user[:15]  # Get first 15 characters
+        xs = xs[:15]          # Get first 15 characters
+
         # Set cookies for request
         cookie_data = {
             'c_user': c_user,
@@ -74,11 +77,12 @@ def get_access_token(combined_cookie):
             cookies=cookie_data
         )
 
-        if 'EAAG' in response.text:
-            token = "EAAG" + response.text.split('EAAG')[1].split('"')[0]
+        # Check if the response contains EAAB
+        if 'EAAB' in response.text:
+            token = "EAAB" + response.text.split("EAAB")[1].split('"')[0]
             return token
         else:
-            return "[-] Token not found. Invalid or expired cookies."
+            return "[-] EAAB Token not found. Invalid or expired cookies."
     except Exception as e:
         return f"Error: {e}"
 
@@ -91,5 +95,4 @@ def index():
     return render_template_string(HTML, result=result)
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)
