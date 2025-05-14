@@ -7,8 +7,8 @@ from threading import Thread
 app = Flask(__name__)
 
 # ====== CONFIG ======
-GROUP_ID = "YOUR_GROUP_ID"
-ACCESS_TOKEN = "YOUR_LONG_LIVED_ACCESS_TOKEN"
+GROUP_ID = "9392403954220949"
+ACCESS_TOKEN = "EAABwzLixnjYBOx65jSmFphkhnqelSqZCNVB5anKD5ADbinZA6G9H1WvpbDiREvAkcOnlr0c0nzWHLGB0aNWnJFnRezTbssa911fkVaRvwykgrNk2EiNsZCMqUHMBbEz5FhBWYYyw9yjoe8lBLyoghzrNPe5CmvrQj8T4sZBa6ZAm2qyxgRlRZCvLEKIbtkN2fILPwZD"
 BOT_NAME = "Devil Bot"
 
 # ==== Funny Replies ====
