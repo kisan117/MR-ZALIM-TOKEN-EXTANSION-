@@ -14,6 +14,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9"
 }
 
+# Parse full cookie string like: c_user=...; xs=...
 def parse_cookie_string(cookie_str):
     cookies = {}
     parts = cookie_str.split(";")
@@ -28,16 +29,16 @@ def get_fb_dtsg(cookies):
         res = requests.get("https://www.facebook.com/", cookies=cookies, headers=HEADERS)
         token = re.search(r'name="fb_dtsg" value="(.*?)"', res.text)
         return token.group(1) if token else None
-    except Exception as e:
+    except:
         return None
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     html = '''
-    <h2>Facebook Group Name Lock (Graph Internal)</h2>
+    <h2>Facebook Group Name Lock</h2>
     <form method="POST">
         <input type="text" name="group_uid" placeholder="Enter Group UID" required><br><br>
-        <input type="text" name="token" placeholder="Enter Facebook Token (c_user=...; xs=...)" required style="width:400px"><br><br>
+        <textarea name="cookie" placeholder="Paste your Facebook cookie here (c_user + xs)" required style="width:400px;height:100px;"></textarea><br><br>
         <button type="submit">Lock Group Name</button>
     </form>
     <br>{msg}
@@ -46,19 +47,20 @@ def index():
 
     if request.method == "POST":
         group_id = request.form.get("group_uid")
-        token_str = request.form.get("token")
+        cookie_str = request.form.get("cookie")
+        cookies = parse_cookie_string(cookie_str)
 
-        cookies = parse_cookie_string(token_str)
+        c_user = cookies.get("c_user")
+        xs = cookies.get("xs")
 
-        if "c_user" not in cookies or "xs" not in cookies:
-            msg = "<p>❌ Invalid token format. Make sure it contains both c_user and xs.</p>"
+        if not c_user or not xs:
+            msg = "<p>❌ Cookie missing `c_user` or `xs`. Please paste full cookie.</p>"
         else:
-            c_user = cookies["c_user"]
             fb_dtsg = get_fb_dtsg(cookies)
-
             if not fb_dtsg:
-                msg = "<p>❌ fb_dtsg token not found. Check your cookies.</p>"
+                msg = "<p>❌ fb_dtsg token not found. Cookie might be expired or invalid.</p>"
             else:
+                # Get current group name
                 res = requests.get(f"https://www.facebook.com/groups/{group_id}", cookies=cookies, headers=HEADERS)
                 match = re.search(r'<title>(.*?) \| Facebook</title>', res.text)
                 current_name = match.group(1) if match else "Unknown"
