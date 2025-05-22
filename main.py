@@ -1,66 +1,77 @@
-import os
-from flask import Flask, request, render_template_string
+from flask import Flask, request
 import requests
+import re
+import time
 
 app = Flask(__name__)
 
-def extract_c_user_xs(cookie_string):
-    cookies = {}
-    parts = [p.strip() for p in cookie_string.replace('\n', ';').split(';') if p.strip()]
-    for part in parts:
-        if '=' in part:
-            key, val = part.split('=', 1)
-            cookies[key.strip()] = val.strip()
-    return cookies.get('c_user'), cookies.get('xs')
+LOCKED_NAME = "Devil Warriors"
 
-def get_eaab_token(c_user, xs):
-    cookie_header = f"c_user={c_user}; xs={xs};"
-    headers = {
-        "Cookie": cookie_header,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    }
-    url = "https://business.facebook.com/business_locations"
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        html = resp.text
-        start = html.find('EAAB')
-        if start == -1:
-            return None
-        eaab_token = html[start:start + 200].split('"')[0]
-        return eaab_token
-    except Exception as e:
-        return None
+COOKIES = {
+    "c_user": "YOUR_C_USER",     # e.g., '100012345678901'
+    "xs": "YOUR_XS_TOKEN"        # e.g., '34%:abc123...'
+}
 
-@app.route('/', methods=['GET', 'POST'])
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Referer": "https://www.facebook.com/",
+    "Accept-Language": "en-US,en;q=0.9"
+}
+
+def get_fb_dtsg():
+    res = requests.get("https://www.facebook.com/", cookies=COOKIES, headers=HEADERS)
+    token = re.search(r'name="fb_dtsg" value="(.*?)"', res.text)
+    return token.group(1) if token else None
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    message = ''
-    eaab_token = ''
-    if request.method == 'POST':
-        cookie_string = request.form.get('cookies')
-        c_user, xs = extract_c_user_xs(cookie_string)
-        if c_user and xs:
-            eaab_token = get_eaab_token(c_user, xs)
-            if eaab_token:
-                message = "EAAB Token extracted successfully!"
-            else:
-                message = "EAAB Token not found. Check your cookies or try again."
+    html = '''
+    <h2>Facebook Group Name Lock (Graph Internal)</h2>
+    <form method="POST">
+        <input type="text" name="group_uid" placeholder="Enter Group UID" required>
+        <button type="submit">Lock Group Name</button>
+    </form>
+    {msg}
+    '''
+    msg = ""
+    if request.method == "POST":
+        group_id = request.form.get("group_uid")
+        fb_dtsg = get_fb_dtsg()
+
+        if not fb_dtsg:
+            msg = "<p>❌ fb_dtsg token not found. Check your cookies.</p>"
         else:
-            message = "c_user or xs cookie missing in your input!"
+            # Step 1: Get current group name (just HTML title)
+            res = requests.get(f"https://www.facebook.com/groups/{group_id}", cookies=COOKIES, headers=HEADERS)
+            match = re.search(r'<title>(.*?) \| Facebook</title>', res.text)
+            current_name = match.group(1) if match else "Unknown"
 
-    return render_template_string('''
-        <h2>Facebook EAAB Token Extractor</h2>
-        <form method="post">
-            <label>Paste your Facebook cookies (including c_user and xs):</label><br>
-            <textarea name="cookies" rows="6" cols="60" placeholder="c_user=...; xs=...;"></textarea><br><br>
-            <button type="submit">Get EAAB Token</button>
-        </form>
-        <p style="color:green;"><b>{{message}}</b></p>
-        {% if eaab_token %}
-            <label>Your EAAB Token:</label><br>
-            <textarea rows="4" cols="60" readonly>{{eaab_token}}</textarea>
-        {% endif %}
-    ''', message=message, eaab_token=eaab_token)
+            if current_name != LOCKED_NAME:
+                time.sleep(1)
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(debug=True, host='0.0.0.0', port=port)
+                # Step 2: GraphQL mutation (internal)
+                graphql_url = "https://www.facebook.com/api/graphql/"
+                payload = {
+                    "fb_dtsg": fb_dtsg,
+                    "av": COOKIES["c_user"],
+                    "doc_id": "4744513838980198",  # This ID is for group name update (may change)
+                    "variables": (
+                        '{"input":{"group_id":"%s","name":"%s","actor_id":"%s","client_mutation_id":"1"}}'
+                        % (group_id, LOCKED_NAME, COOKIES["c_user"])
+                    )
+                }
+
+                r = requests.post(graphql_url, headers=HEADERS, cookies=COOKIES, data=payload)
+
+                if r.status_code == 200:
+                    msg = f"<p><b>✅ Old Name:</b> {current_name}<br><b>New Locked Name:</b> {LOCKED_NAME}</p>"
+                else:
+                    msg = f"<p>❌ Update failed: {r.text}</p>"
+            else:
+                msg = f"<p><b>✅ Already Locked:</b> {current_name}</p>"
+
+    return html.format(msg=msg)
+
+if __name__ == "__main__":
+    app.run(port=5000, debug=True)
