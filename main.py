@@ -7,11 +7,6 @@ app = Flask(__name__)
 
 LOCKED_NAME = "Devil Warriors"
 
-COOKIES = {
-    "c_user": "YOUR_C_USER",     # e.g., '100012345678901'
-    "xs": "YOUR_XS_TOKEN"        # e.g., '34%:abc123...'
-}
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Content-Type": "application/x-www-form-urlencoded",
@@ -19,57 +14,77 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9"
 }
 
-def get_fb_dtsg():
-    res = requests.get("https://www.facebook.com/", cookies=COOKIES, headers=HEADERS)
-    token = re.search(r'name="fb_dtsg" value="(.*?)"', res.text)
-    return token.group(1) if token else None
+def parse_cookie_string(cookie_str):
+    cookies = {}
+    parts = cookie_str.split(";")
+    for part in parts:
+        if "=" in part:
+            k, v = part.strip().split("=", 1)
+            cookies[k.strip()] = v.strip()
+    return cookies
+
+def get_fb_dtsg(cookies):
+    try:
+        res = requests.get("https://www.facebook.com/", cookies=cookies, headers=HEADERS)
+        token = re.search(r'name="fb_dtsg" value="(.*?)"', res.text)
+        return token.group(1) if token else None
+    except Exception as e:
+        return None
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     html = '''
     <h2>Facebook Group Name Lock (Graph Internal)</h2>
     <form method="POST">
-        <input type="text" name="group_uid" placeholder="Enter Group UID" required>
+        <input type="text" name="group_uid" placeholder="Enter Group UID" required><br><br>
+        <input type="text" name="token" placeholder="Enter Facebook Token (c_user=...; xs=...)" required style="width:400px"><br><br>
         <button type="submit">Lock Group Name</button>
     </form>
-    {msg}
+    <br>{msg}
     '''
     msg = ""
+
     if request.method == "POST":
         group_id = request.form.get("group_uid")
-        fb_dtsg = get_fb_dtsg()
+        token_str = request.form.get("token")
 
-        if not fb_dtsg:
-            msg = "<p>❌ fb_dtsg token not found. Check your cookies.</p>"
+        cookies = parse_cookie_string(token_str)
+
+        if "c_user" not in cookies or "xs" not in cookies:
+            msg = "<p>❌ Invalid token format. Make sure it contains both c_user and xs.</p>"
         else:
-            # Step 1: Get current group name (just HTML title)
-            res = requests.get(f"https://www.facebook.com/groups/{group_id}", cookies=COOKIES, headers=HEADERS)
-            match = re.search(r'<title>(.*?) \| Facebook</title>', res.text)
-            current_name = match.group(1) if match else "Unknown"
+            c_user = cookies["c_user"]
+            fb_dtsg = get_fb_dtsg(cookies)
 
-            if current_name != LOCKED_NAME:
-                time.sleep(1)
-
-                # Step 2: GraphQL mutation (internal)
-                graphql_url = "https://www.facebook.com/api/graphql/"
-                payload = {
-                    "fb_dtsg": fb_dtsg,
-                    "av": COOKIES["c_user"],
-                    "doc_id": "4744513838980198",  # This ID is for group name update (may change)
-                    "variables": (
-                        '{"input":{"group_id":"%s","name":"%s","actor_id":"%s","client_mutation_id":"1"}}'
-                        % (group_id, LOCKED_NAME, COOKIES["c_user"])
-                    )
-                }
-
-                r = requests.post(graphql_url, headers=HEADERS, cookies=COOKIES, data=payload)
-
-                if r.status_code == 200:
-                    msg = f"<p><b>✅ Old Name:</b> {current_name}<br><b>New Locked Name:</b> {LOCKED_NAME}</p>"
-                else:
-                    msg = f"<p>❌ Update failed: {r.text}</p>"
+            if not fb_dtsg:
+                msg = "<p>❌ fb_dtsg token not found. Check your cookies.</p>"
             else:
-                msg = f"<p><b>✅ Already Locked:</b> {current_name}</p>"
+                res = requests.get(f"https://www.facebook.com/groups/{group_id}", cookies=cookies, headers=HEADERS)
+                match = re.search(r'<title>(.*?) \| Facebook</title>', res.text)
+                current_name = match.group(1) if match else "Unknown"
+
+                if current_name != LOCKED_NAME:
+                    time.sleep(1)
+
+                    graphql_url = "https://www.facebook.com/api/graphql/"
+                    payload = {
+                        "fb_dtsg": fb_dtsg,
+                        "av": c_user,
+                        "doc_id": "4744513838980198",
+                        "variables": (
+                            '{"input":{"group_id":"%s","name":"%s","actor_id":"%s","client_mutation_id":"1"}}'
+                            % (group_id, LOCKED_NAME, c_user)
+                        )
+                    }
+
+                    r = requests.post(graphql_url, headers=HEADERS, cookies=cookies, data=payload)
+
+                    if r.status_code == 200:
+                        msg = f"<p><b>✅ Old Name:</b> {current_name}<br><b>New Locked Name:</b> {LOCKED_NAME}</p>"
+                    else:
+                        msg = f"<p>❌ Update failed:<br>{r.text}</p>"
+                else:
+                    msg = f"<p><b>✅ Already Locked:</b> {current_name}</p>"
 
     return html.format(msg=msg)
 
